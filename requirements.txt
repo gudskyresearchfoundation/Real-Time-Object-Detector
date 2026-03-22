@@ -1,0 +1,37 @@
+# ─── ObjectVision · Python Dependencies ─────────────────────────────────────
+# Install with:  pip install -r requirements.txt
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi>=0.112.0              # >=0.112 required — avoids litserve conflict
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9       # required for File() uploads
+websockets>=12.0
+
+# ── AI / CV ───────────────────────────────────────────────────────────────────
+ultralytics>=8.3.0            # >=8.3.0 required — fixes PyTorch 2.6 weights_only=True error
+torch>=2.2.0                  # PyTorch — install the CUDA build separately if needed
+torchvision>=0.17.0
+opencv-python-headless>=4.9.0.80
+numpy>=1.26.0
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.1
+
+# ── Auth / Security ───────────────────────────────────────────────────────────
+# (uses only stdlib: hashlib, secrets, sqlite3 — no extra packages needed)
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+# (in-process sliding window — no extra packages needed)
+# For multi-worker production, swap the store for Redis:
+#   redis==5.0.4
+#   hiredis==2.3.2
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GPU note
+# ─────────────────────────────────────────────────────────────────────────────
+# The torch line above installs the CPU build from PyPI.
+# For CUDA 12.x (NVIDIA L4 / workshop GPU) run instead:
+#
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#
+# Then re-run:  pip install -r requirements.txt

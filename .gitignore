@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+*.env.local
+
+# YOLO model weights (large binaries — download via setup.sh)
+*.pt
+*.onnx
+*.torchscript
+
+# Uploaded videos (runtime data — not committed)
+Video_storage/*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Runtime data
+data/*.db
+logs/*.log
+logs/*.log.*

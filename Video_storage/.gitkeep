@@ -1,0 +1,7 @@
+# This directory is intentionally empty.
+# Videos are saved here automatically at runtime, organised by date:
+#
+#   Video_storage/
+#   └── YYYY-MM-DD/
+#       ├── myvideo_abc12345.mp4
+#       └── another_def67890.avi

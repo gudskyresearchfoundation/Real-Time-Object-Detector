@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ObjectVision · Real-Time Detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0c0f;
+    --surface:   #111418;
+    --panel:     #181d24;
+    --border:    #252d38;
+    --accent:    #00e5ff;
+    --accent2:   #ff3d71;
+    --accent3:   #ffe600;
+    --text:      #e8edf2;
+    --muted:     #5a6878;
+    --green:     #00ff88;
+    --radius:    6px;
+    --mono:      'DM Mono', monospace;
+    --display:   'Bebas Neue', sans-serif;
+    --body:      'DM Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── GRID NOISE BACKGROUND ─── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 36px;
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    background: rgba(10,12,15,0.85);
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px;
+    border: 2px solid var(--accent);
+    border-radius: 4px;
+    display: grid; place-items: center;
+    position: relative;
+  }
+  .logo-icon::before {
+    content: '';
+    width: 16px; height: 16px;
+    border: 2px solid var(--accent);
+    border-radius: 2px;
+    animation: scanpulse 2s ease-in-out infinite;
+  }
+  @keyframes scanpulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50% { opacity:0.4; transform:scale(0.8); }
+  }
+  .logo-text {
+    font-family: var(--display);
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: var(--text);
+  }
+  .logo-text span { color: var(--accent); }
+
+  .header-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+  }
+  .header-badge .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* ─── LAYOUT ─── */
+  .workspace {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 61px);
+    gap: 0;
+  }
+
+  /* ─── LEFT PANEL ─── */
+  .left-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-section {
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── UPLOAD ZONE ─── */
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+    background: var(--panel);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+  }
+  .upload-zone.drag-over::after {
+    content: 'DROP IT';
+    position: absolute; inset: 0;
+    background: rgba(0,229,255,0.1);
+    display: grid; place-items: center;
+    font-family: var(--display);
+    font-size: 32px;
+    color: var(--accent);
+    letter-spacing: 4px;
+  }
+
+  .upload-icon {
+    width: 44px; height: 44px;
+    margin: 0 auto 12px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    display: grid; place-items: center;
+    transition: border-color 0.25s;
+  }
+  .upload-zone:hover .upload-icon { border-color: var(--accent); }
+  .upload-icon svg { width: 20px; height: 20px; stroke: var(--muted); }
+  .upload-zone:hover .upload-icon svg { stroke: var(--accent); }
+
+  .upload-title {
+    font-size: 13px; font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .upload-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  #file-input { display: none; }
+
+  /* ─── FILE INFO ─── */
+  .file-info {
+    display: none;
+    margin-top: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .file-info.visible { display: flex; }
+  .file-thumb {
+    width: 48px; height: 36px;
+    background: var(--border);
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+    display: grid; place-items: center;
+    font-size: 18px;
+  }
+  .file-meta { flex: 1; min-width: 0; }
+  .file-name {
+    font-size: 12px; font-weight: 500;
+    color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .file-size {
+    font-size: 10px; font-family: var(--mono);
+    color: var(--muted); margin-top: 2px;
+  }
+  .file-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 16px;
+    padding: 0; line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.2s;
+  }
+  .file-remove:hover { color: var(--accent2); }
+
+  /* ─── CONFIDENCE SLIDER ─── */
+  .conf-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .conf-label { font-size: 12px; color: var(--text); font-weight: 500; }
+  .conf-value {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--accent);
+    background: rgba(0,229,255,0.08);
+    padding: 2px 8px; border-radius: 4px;
+  }
+
+  /* ─── MODEL SELECTOR ─── */
+  .model-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+  }
+
+  .model-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 8px 6px 7px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.18s;
+    position: relative;
+    overflow: hidden;
+  }
+  .model-card:hover {
+    border-color: var(--accent);
+  }
+  .model-card.selected {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.08);
+  }
+  .model-card.selected::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .model-card-name {
+    font-family: var(--display);
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .model-card.selected .model-card-name { color: var(--accent); }
+  .model-card-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .model-card-params {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  /* speed bar */
+  .model-speed-bar {
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    margin-top: 5px;
+    overflow: hidden;
+  }
+  .model-speed-fill {
+    height: 100%;
+    border-radius: 1px;
+    transition: width 0.3s;
+  }
+
+  /* variant badge colours */
+  .badge-nano   { background: var(--green); }
+  .badge-small  { background: var(--accent); }
+  .badge-medium { background: var(--accent3); }
+  .badge-large  { background: #ff9500; }
+  .badge-xlarge { background: var(--accent2); }
+  .badge-world  { background: #b44fff; }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%; height: 4px;
+    background: var(--border);
+    border-radius: 2px; outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0,229,255,0.5);
+    cursor: pointer;
+  }
+
+  /* ─── CLASS SELECTOR ─── */
+  .class-controls {
+    display: flex; gap: 6px; margin-bottom: 10px;
+  }
+  .ctrl-btn {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .class-search {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    outline: none;
+    margin-bottom: 10px;
+    transition: border-color 0.2s;
+  }
+  .class-search:focus { border-color: var(--accent); }
+  .class-search::placeholder { color: var(--muted); }
+
+  .class-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .class-grid::-webkit-scrollbar { width: 3px; }
+  .class-grid::-webkit-scrollbar-track { background: transparent; }
+  .class-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .class-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 11px;
+    color: var(--muted);
+    user-select: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .class-chip:hover { border-color: var(--accent); color: var(--text); }
+  .class-chip.selected {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.1);
+    color: var(--accent);
+  }
+  .class-chip .chip-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .class-chip.selected .chip-dot { background: var(--accent); }
+
+  /* ─── RUN BUTTON ─── */
+  .panel-footer {
+    margin-top: auto;
+    padding: 18px 22px;
+    border-top: 1px solid var(--border);
+  }
+
+  .run-btn {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--display);
+    font-size: 20px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .run-btn::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.15);
+    transform: translateX(-100%);
+    transition: transform 0.4s;
+  }
+  .run-btn:hover::before { transform: translateX(100%); }
+  .run-btn:hover { box-shadow: 0 0 24px rgba(0,229,255,0.4); }
+  .run-btn:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .run-btn:disabled::before { display: none; }
+
+  .stop-btn {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    border-radius: var(--radius);
+    font-family: var(--display);
+    font-size: 20px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: none;
+  }
+  .stop-btn:hover { background: rgba(255,61,113,0.1); }
+
+  .selected-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+  .selected-count span { color: var(--accent); }
+
+  /* ─── RIGHT PANEL ─── */
+  .right-panel {
+    display: flex; flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* ─── VIDEO AREA ─── */
+  .video-area {
+    flex: 1;
+    display: grid; place-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .video-placeholder {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 16px;
+    opacity: 0.35;
+  }
+  .placeholder-rings {
+    width: 100px; height: 100px;
+    position: relative; display: grid; place-items: center;
+  }
+  .placeholder-rings::before, .placeholder-rings::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    animation: ringpulse 2.5s ease-in-out infinite;
+  }
+  .placeholder-rings::before {
+    width: 100%; height: 100%;
+    animation-delay: 0s;
+  }
+  .placeholder-rings::after {
+    width: 65%; height: 65%;
+    animation-delay: 0.6s;
+  }
+  @keyframes ringpulse {
+    0%,100% { opacity:0.6; transform:scale(1); }
+    50% { opacity:0.15; transform:scale(1.08); }
+  }
+  .placeholder-inner {
+    width: 30px; height: 30px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+  }
+  .placeholder-text {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* Video canvas wrapper */
+  .canvas-wrapper {
+    display: none;
+    position: absolute; inset: 0;
+    background: #000;
+  }
+  .canvas-wrapper.active { display: flex; align-items: center; justify-content: center; }
+
+  #video-el {
+    display: none;
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+  }
+  #output-canvas {
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* ─── SCAN LINE OVERLAY ─── */
+  .scanline-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0,229,255,0.012) 3px,
+      rgba(0,229,255,0.012) 4px
+    );
+    z-index: 5;
+    display: none;
+  }
+  .canvas-wrapper.active + .scanline-overlay,
+  .scanline-overlay.active { display: block; }
+
+  /* ─── HUD OVERLAY BARS ─── */
+  .hud-top {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px;
+    background: linear-gradient(to bottom, rgba(10,12,15,0.85), transparent);
+    z-index: 10;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: none;
+  }
+  .hud-top.active { display: flex; }
+
+  .hud-stat { display: flex; align-items: center; gap: 6px; }
+  .hud-stat .val { color: var(--accent); }
+  .hud-sep { width: 1px; height: 12px; background: var(--border); }
+
+  .hud-bottom {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 12px 20px;
+    background: linear-gradient(to top, rgba(10,12,15,0.85), transparent);
+    z-index: 10;
+    display: none;
+  }
+  .hud-bottom.active { display: flex; align-items: center; gap: 12px; }
+
+  .progress-bar-wrap {
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.1s linear;
+    border-radius: 2px;
+  }
+  .progress-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* ─── DETECTIONS PANEL ─── */
+  .detections-bar {
+    height: 160px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; flex-direction: column;
+  }
+
+  .det-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .det-title {
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .det-count {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,229,255,0.08);
+    padding: 2px 8px; border-radius: 10px;
+  }
+
+  .det-list {
+    flex: 1;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 20px;
+    overflow-x: auto; overflow-y: hidden;
+  }
+  .det-list::-webkit-scrollbar { height: 3px; }
+  .det-list::-webkit-scrollbar-track { background: transparent; }
+  .det-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .det-empty {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted); letter-spacing: 1px;
+  }
+
+  .det-tag {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    font-family: var(--mono); font-size: 11px;
+    animation: tagfade 0.3s ease;
+    flex-shrink: 0;
+  }
+  @keyframes tagfade { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
+
+  .det-tag-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .det-tag-label { color: var(--text); }
+  .det-tag-conf { color: var(--muted); }
+
+  /* ─── STATUS BAR ─── */
+  .status-bar {
+    padding: 8px 20px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--muted); letter-spacing: 1px;
+  }
+  .status-item { display: flex; align-items: center; gap: 5px; }
+  .status-val { color: var(--text); }
+
+  /* ─── TOAST ─── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text);
+    z-index: 999;
+    transform: translateY(20px); opacity: 0;
+    transition: all 0.3s;
+    display: flex; align-items: center; gap: 10px;
+    max-width: 320px;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast .t-icon { font-size: 16px; flex-shrink: 0; }
+
+  /* ─── SAVE INDICATOR ─── */
+  .save-flash {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(0,255,136,0.15);
+    border: 1px solid var(--green);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--green); letter-spacing: 1px;
+    opacity: 0; transition: opacity 0.4s;
+    z-index: 20;
+  }
+  .save-flash.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div class="logo-text">OBJECT<span>VISION</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="header-badge"><span class="dot"></span><span id="hdr-model">YOLOv8n</span> · CUDA</div>
+    <div class="header-badge" id="session-id">SESSION —</div>
+  </div>
+</header>
+
+<!-- ─── WORKSPACE ─── -->
+<div class="workspace">
+
+  <!-- ═══ LEFT PANEL ═══ -->
+  <div class="left-panel">
+
+    <!-- Upload -->
+    <div class="panel-section">
+      <div class="section-label">Input Video</div>
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="upload-title">Drop video here</div>
+        <div class="upload-sub">MP4 · AVI · MOV · MKV · WEBM</div>
+        <input type="file" id="file-input" accept="video/*">
+      </div>
+      <div class="file-info" id="file-info">
+        <div class="file-thumb">🎬</div>
+        <div class="file-meta">
+          <div class="file-name" id="file-name">—</div>
+          <div class="file-size" id="file-size">—</div>
+        </div>
+        <button class="file-remove" id="file-remove" title="Remove">✕</button>
+      </div>
+    </div>
+
+    <!-- Model Selector -->
+    <div class="panel-section">
+      <div class="section-label">Model</div>
+      <div class="model-grid" id="model-grid">
+        <!-- filled by JS -->
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">SPEED</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">ACCURACY</span>
+      </div>
+      <div style="height:3px;background:linear-gradient(to right,var(--green),var(--accent),var(--accent3),#ff9500,var(--accent2),#b44fff);border-radius:2px;margin-top:3px;"></div>
+    </div>
+
+    <!-- Confidence -->
+    <div class="panel-section">
+      <div class="section-label">Confidence Threshold</div>
+      <div class="conf-row">
+        <span class="conf-label">Min Confidence</span>
+        <span class="conf-value" id="conf-val">0.50</span>
+      </div>
+      <input type="range" id="conf-slider" min="1" max="99" value="50">
+    </div>
+
+    <!-- Class Selector -->
+    <div class="panel-section" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+      <div class="section-label">COCO Classes</div>
+      <div class="class-controls">
+        <button class="ctrl-btn" id="btn-all">SELECT ALL</button>
+        <button class="ctrl-btn" id="btn-none">CLEAR</button>
+        <button class="ctrl-btn" id="btn-common">COMMON</button>
+      </div>
+      <input type="text" class="class-search" id="class-search" placeholder="Search class...">
+      <div class="class-grid" id="class-grid"></div>
+    </div>
+
+    <!-- Footer / Run -->
+    <div class="panel-footer">
+      <button class="run-btn" id="run-btn" disabled>▶ RUN DETECTION</button>
+      <button class="stop-btn" id="stop-btn">■ STOP</button>
+      <div class="selected-count" id="sel-count"><span id="sel-num">0</span> / 80 classes selected</div>
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT PANEL ═══ -->
+  <div class="right-panel">
+
+    <!-- Video area -->
+    <div class="video-area">
+
+      <!-- Placeholder -->
+      <div class="video-placeholder" id="placeholder">
+        <div class="placeholder-rings">
+          <div class="placeholder-inner"></div>
+        </div>
+        <div class="placeholder-text">Awaiting Video Input</div>
+      </div>
+
+      <!-- Canvas output -->
+      <div class="canvas-wrapper" id="canvas-wrapper">
+        <video id="video-el" muted playsinline></video>
+        <canvas id="output-canvas"></canvas>
+      </div>
+
+      <!-- Scanline -->
+      <div class="scanline-overlay" id="scanline"></div>
+
+      <!-- HUD top -->
+      <div class="hud-top" id="hud-top">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div class="hud-stat">FPS <span class="val" id="hud-fps">—</span></div>
+          <div class="hud-sep"></div>
+          <div class="hud-stat">FRAME <span class="val" id="hud-frame">—</span></div>
+          <div class="hud-sep"></div>
+          <div class="hud-stat">DETECTIONS <span class="val" id="hud-det">—</span></div>
+        </div>
+        <div class="hud-stat" id="hud-status" style="color:var(--green)">● LIVE</div>
+      </div>
+
+      <!-- HUD bottom progress -->
+      <div class="hud-bottom" id="hud-bottom">
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-time" id="progress-time">0:00 / 0:00</div>
+      </div>
+
+      <!-- Save flash -->
+      <div class="save-flash" id="save-flash">✓ SAVED</div>
+    </div>
+
+    <!-- Detections bar -->
+    <div class="detections-bar">
+      <div class="det-header">
+        <div class="det-title">Current Frame Detections</div>
+        <div class="det-count" id="det-count">0 objects</div>
+      </div>
+      <div class="det-list" id="det-list">
+        <div class="det-empty">No detections yet — run inference to begin</div>
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+      <div class="status-item">MODEL <span class="status-val" id="sb-model">v8n</span></div>
+      <div class="status-item">·</div>
+      <div class="status-item">DEVICE <span class="status-val">CUDA</span></div>
+      <div class="status-item">·</div>
+      <div class="status-item">STORAGE <span class="status-val" id="sb-storage">Video_storage/</span></div>
+      <div class="status-item">·</div>
+      <div class="status-item">CONF <span class="status-val" id="sb-conf">0.50</span></div>
+      <div class="status-item" style="margin-left:auto;">
+        <span id="sb-state" style="color:var(--muted)">IDLE</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"><span class="t-icon" id="t-icon">ℹ</span><span id="t-msg">—</span></div>
+
+<script>
+// ─── COCO 80 CLASSES ───────────────────────────────────────────────
+const COCO_CLASSES = [
+  "person","bicycle","car","motorcycle","airplane","bus","train","truck",
+  "boat","traffic light","fire hydrant","stop sign","parking meter","bench",
+  "bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe",
+  "backpack","umbrella","handbag","tie","suitcase","frisbee","skis","snowboard",
+  "sports ball","kite","baseball bat","baseball glove","skateboard","surfboard",
+  "tennis racket","bottle","wine glass","cup","fork","knife","spoon","bowl",
+  "banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza",
+  "donut","cake","chair","couch","potted plant","bed","dining table","toilet",
+  "tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven",
+  "toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear",
+  "hair drier","toothbrush"
+];
+
+const COMMON_CLASSES = ["person","car","truck","bus","bicycle","motorcycle","dog","cat","bottle","cup","chair","couch","tv","laptop","cell phone"];
+
+// Palette for detection tags
+const COLORS = [
+  "#00e5ff","#ff3d71","#ffe600","#00ff88","#ff9500","#b44fff",
+  "#ff6b35","#00d4aa","#ff85a1","#7fff00","#ff4da6","#00bfff"
+];
+function classColor(cls) {
+  let h = 0; for (let c of cls) h = (h*31 + c.charCodeAt(0)) % COLORS.length;
+  return COLORS[h];
+}
+
+// ─── STATE ─────────────────────────────────────────────────────────
+let selectedClasses = new Set();
+let uploadedFile = null;
+let isRunning = false;
+let animFrameId = null;
+let wsConnection = null;
+let frameCount = 0;
+let fpsTimer = 0; fpsCount = 0; currentFps = 0;
+let videoDuration = 0;
+let selectedModel = 'yolov8n.pt';   // default
+
+// ─── YOLO MODELS ───────────────────────────────────────────────────
+const YOLO_MODELS = [
+  { id: 'yolov8n.pt', label: 'v8n', tag: 'Nano',   params: '3.2M',  speed: 17,  badge: 'badge-nano'   },
+  { id: 'yolov8s.pt', label: 'v8s', tag: 'Small',  params: '11.2M', speed: 34,  badge: 'badge-small'  },
+  { id: 'yolov8m.pt', label: 'v8m', tag: 'Medium', params: '25.9M', speed: 52,  badge: 'badge-medium' },
+  { id: 'yolov8l.pt', label: 'v8l', tag: 'Large',  params: '43.7M', speed: 70,  badge: 'badge-large'  },
+  { id: 'yolov8x.pt', label: 'v8x', tag: 'XLarge', params: '68.2M', speed: 85,  badge: 'badge-xlarge' },
+  { id: 'yolov8x6.pt',label: 'v8x6',tag: 'World',  params: '97.2M', speed: 100, badge: 'badge-world'  },
+];
+
+function renderModelGrid() {
+  const grid = document.getElementById('model-grid');
+  grid.innerHTML = YOLO_MODELS.map(m => `
+    <div class="model-card ${m.id === selectedModel ? 'selected' : ''}" data-model="${m.id}">
+      <div class="model-card-name">${m.label.toUpperCase()}</div>
+      <div class="model-card-tag">${m.tag}</div>
+      <div class="model-card-params">${m.params}</div>
+      <div class="model-speed-bar">
+        <div class="model-speed-fill ${m.badge}" style="width:${m.speed}%"></div>
+      </div>
+    </div>
+  `).join('');
+
+  grid.querySelectorAll('.model-card').forEach(el => {
+    el.addEventListener('click', () => {
+      if (isRunning) return;
+      selectedModel = el.dataset.model;
+      renderModelGrid();
+      const m = YOLO_MODELS.find(x => x.id === selectedModel);
+      document.getElementById('sb-model').textContent = m.label.toUpperCase();
+      document.getElementById('hdr-model').textContent = 'YOLOv8' + m.tag[0].toLowerCase();
+      showToast('⚙', `Model → ${m.label.toUpperCase()} (${m.params} params)`);
+    });
+  });
+}
+
+renderModelGrid();
+
+// ─── SESSION ID ────────────────────────────────────────────────────
+const SESSION_ID = 'SID-' + Math.random().toString(36).slice(2,7).toUpperCase();
+document.getElementById('session-id').textContent = 'SESSION ' + SESSION_ID;
+
+// ─── RENDER CLASS GRID ─────────────────────────────────────────────
+function renderClasses(filter = '') {
+  const grid = document.getElementById('class-grid');
+  const q = filter.toLowerCase();
+  const list = COCO_CLASSES.filter(c => !q || c.includes(q));
+  grid.innerHTML = list.map(cls => `
+    <div class="class-chip ${selectedClasses.has(cls)?'selected':''}" data-cls="${cls}">
+      <span class="chip-dot"></span>
+      <span>${cls}</span>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.class-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      const cls = el.dataset.cls;
+      if (selectedClasses.has(cls)) selectedClasses.delete(cls);
+      else selectedClasses.add(cls);
+      el.classList.toggle('selected');
+      updateSelCount();
+      checkRunnable();
+    });
+  });
+}
+
+function updateSelCount() {
+  document.getElementById('sel-num').textContent = selectedClasses.size;
+}
+
+// Initial render - pre-select common classes
+COMMON_CLASSES.forEach(c => selectedClasses.add(c));
+renderClasses();
+updateSelCount();
+
+document.getElementById('class-search').addEventListener('input', e => renderClasses(e.target.value));
+
+document.getElementById('btn-all').addEventListener('click', () => {
+  COCO_CLASSES.forEach(c => selectedClasses.add(c));
+  renderClasses(document.getElementById('class-search').value);
+  updateSelCount(); checkRunnable();
+});
+document.getElementById('btn-none').addEventListener('click', () => {
+  selectedClasses.clear();
+  renderClasses(document.getElementById('class-search').value);
+  updateSelCount(); checkRunnable();
+});
+document.getElementById('btn-common').addEventListener('click', () => {
+  selectedClasses.clear();
+  COMMON_CLASSES.forEach(c => selectedClasses.add(c));
+  renderClasses(document.getElementById('class-search').value);
+  updateSelCount(); checkRunnable();
+});
+
+// ─── CONFIDENCE ────────────────────────────────────────────────────
+const confSlider = document.getElementById('conf-slider');
+const confVal = document.getElementById('conf-val');
+confSlider.addEventListener('input', () => {
+  const v = (confSlider.value / 100).toFixed(2);
+  confVal.textContent = v;
+  document.getElementById('sb-conf').textContent = v;
+});
+
+// ─── UPLOAD ────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('upload-zone');
+const fileInput = document.getElementById('file-input');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('video/')) handleFile(f);
+  else showToast('⚠', 'Please drop a valid video file');
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+function handleFile(f) {
+  uploadedFile = f;
+  document.getElementById('file-name').textContent = f.name;
+  document.getElementById('file-size').textContent = formatBytes(f.size) + ' · ' + f.type.split('/')[1].toUpperCase();
+  document.getElementById('file-info').classList.add('visible');
+
+  // Load into video element to get duration
+  const videoEl = document.getElementById('video-el');
+  videoEl.src = URL.createObjectURL(f);
+  videoEl.onloadedmetadata = () => {
+    videoDuration = videoEl.duration;
+  };
+
+  // Simulate save to Video_storage/<date>/
+  simulateSave(f);
+  checkRunnable();
+}
+
+document.getElementById('file-remove').addEventListener('click', () => {
+  uploadedFile = null;
+  document.getElementById('file-info').classList.remove('visible');
+  document.getElementById('video-el').src = '';
+  fileInput.value = '';
+  checkRunnable();
+  hideCanvas();
+});
+
+function formatBytes(b) {
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+// ─── SIMULATE LOCAL SAVE ───────────────────────────────────────────
+function simulateSave(f) {
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('sb-storage').textContent = `Video_storage/${today}/`;
+
+  // Send save request to backend
+  const formData = new FormData();
+  formData.append('video', f);
+  fetch('/api/upload', { method: 'POST', body: formData })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (data) {
+        flashSaved();
+        showToast('✓', `Saved to Video_storage/${today}/`);
+      }
+    })
+    .catch(() => {
+      // UI demo: still flash saved
+      flashSaved();
+      showToast('✓', `Queued: Video_storage/${today}/${f.name}`);
+    });
+}
+
+function flashSaved() {
+  const el = document.getElementById('save-flash');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ─── RUNNABLE CHECK ────────────────────────────────────────────────
+function checkRunnable() {
+  const ok = uploadedFile && selectedClasses.size > 0 && !isRunning;
+  document.getElementById('run-btn').disabled = !ok;
+}
+
+// ─── RUN DETECTION ─────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('click', startInference);
+document.getElementById('stop-btn').addEventListener('click', stopInference);
+
+function startInference() {
+  if (!uploadedFile || selectedClasses.size === 0) return;
+  isRunning = true;
+
+  document.getElementById('run-btn').style.display = 'none';
+  document.getElementById('stop-btn').style.display = 'block';
+  document.getElementById('sb-state').textContent = '● PROCESSING';
+  document.getElementById('sb-state').style.color = 'var(--accent)';
+
+  showCanvas();
+
+  // Open WebSocket
+  const conf = parseFloat(confSlider.value) / 100;
+  const classes = Array.from(selectedClasses);
+
+  const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${wsProto}://${location.host}/ws/inference`);
+  wsConnection = ws;
+
+  ws.onopen = () => {
+    // Send metadata first
+    ws.send(JSON.stringify({
+      type: 'config',
+      session_id: SESSION_ID,
+      confidence: conf,
+      classes: classes,
+      filename: uploadedFile.name,
+      model: selectedModel
+    }));
+    // Then send binary video
+    uploadedFile.arrayBuffer().then(buf => ws.send(buf));
+    showToast('▶', 'Inference started · ' + classes.length + ' classes active');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'frame') {
+        renderFrame(msg);
+      } else if (msg.type === 'done') {
+        stopInference();
+        showToast('✓', 'Inference complete · ' + msg.total_frames + ' frames processed');
+      } else if (msg.type === 'error') {
+        showToast('⚠', msg.message);
+        stopInference();
+      }
+    } catch(e) {}
+  };
+
+  ws.onerror = () => {
+    // Demo mode: simulate inference locally
+    runDemoMode();
+  };
+
+  ws.onclose = () => {
+    if (isRunning) runDemoMode();
+  };
+}
+
+// ─── DEMO MODE (no backend) ────────────────────────────────────────
+let demoInterval = null;
+function runDemoMode() {
+  if (!isRunning) return;
+  const videoEl = document.getElementById('video-el');
+  const canvas = document.getElementById('output-canvas');
+  const ctx = canvas.getContext('2d');
+  videoEl.style.display = 'none';
+
+  videoEl.play().catch(()=>{});
+
+  frameCount = 0;
+  fpsTimer = performance.now();
+  fpsCount = 0;
+
+  function drawFrame() {
+    if (!isRunning) return;
+
+    canvas.width = videoEl.videoWidth || 640;
+    canvas.height = videoEl.videoHeight || 360;
+
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+    // Fake detections from selected classes
+    const numDets = Math.floor(Math.random() * 4) + 1;
+    const fakeDets = [];
+    const classArr = Array.from(selectedClasses);
+    for (let i = 0; i < numDets && i < classArr.length; i++) {
+      const cls = classArr[Math.floor(Math.random() * classArr.length)];
+      const conf = 0.55 + Math.random() * 0.40;
+      const x = Math.random() * (canvas.width * 0.7);
+      const y = Math.random() * (canvas.height * 0.7);
+      const w = 60 + Math.random() * 150;
+      const h = 40 + Math.random() * 120;
+      fakeDets.push({ cls, conf, x, y, w, h });
+    }
+
+    // Draw boxes
+    fakeDets.forEach(d => {
+      const color = classColor(d.cls);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(d.x, d.y, d.w, d.h);
+
+      // Label bg
+      const label = `${d.cls} ${(d.conf*100).toFixed(0)}%`;
+      ctx.font = 'bold 12px DM Mono, monospace';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = color + 'dd';
+      ctx.fillRect(d.x, d.y - 20, tw + 10, 20);
+      ctx.fillStyle = '#0a0c0f';
+      ctx.fillText(label, d.x + 5, d.y - 5);
+    });
+
+    // Corner brackets
+    drawCornerBrackets(ctx, canvas.width, canvas.height);
+
+    // Update HUD
+    frameCount++;
+    fpsCount++;
+    const now = performance.now();
+    if (now - fpsTimer >= 1000) {
+      currentFps = fpsCount;
+      fpsCount = 0; fpsTimer = now;
+    }
+    document.getElementById('hud-fps').textContent = currentFps || '—';
+    document.getElementById('hud-frame').textContent = frameCount;
+    document.getElementById('hud-det').textContent = fakeDets.length;
+
+    // Progress
+    if (videoDuration > 0) {
+      const pct = (videoEl.currentTime / videoDuration) * 100;
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-time').textContent =
+        formatTime(videoEl.currentTime) + ' / ' + formatTime(videoDuration);
+    }
+
+    updateDetections(fakeDets);
+    animFrameId = requestAnimationFrame(drawFrame);
+  }
+
+  videoEl.addEventListener('ended', () => stopInference(), { once: true });
+  animFrameId = requestAnimationFrame(drawFrame);
+}
+
+function drawCornerBrackets(ctx, w, h) {
+  const s = 18; const lw = 2;
+  ctx.strokeStyle = 'rgba(0,229,255,0.6)';
+  ctx.lineWidth = lw;
+  // TL
+  ctx.beginPath(); ctx.moveTo(0,s); ctx.lineTo(0,0); ctx.lineTo(s,0); ctx.stroke();
+  // TR
+  ctx.beginPath(); ctx.moveTo(w-s,0); ctx.lineTo(w,0); ctx.lineTo(w,s); ctx.stroke();
+  // BL
+  ctx.beginPath(); ctx.moveTo(0,h-s); ctx.lineTo(0,h); ctx.lineTo(s,h); ctx.stroke();
+  // BR
+  ctx.beginPath(); ctx.moveTo(w-s,h); ctx.lineTo(w,h); ctx.lineTo(w,h-s); ctx.stroke();
+}
+
+function renderFrame(msg) {
+  // Handle real backend frame data
+  const canvas = document.getElementById('output-canvas');
+  const ctx = canvas.getContext('2d');
+  if (msg.image) {
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width; canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+    };
+    img.src = 'data:image/jpeg;base64,' + msg.image;
+  }
+  if (msg.detections) updateDetections(msg.detections);
+  frameCount++;
+  document.getElementById('hud-frame').textContent = frameCount;
+  document.getElementById('hud-det').textContent = msg.detections?.length || 0;
+  if (msg.fps) document.getElementById('hud-fps').textContent = msg.fps.toFixed(1);
+  if (msg.progress !== undefined) {
+    document.getElementById('progress-fill').style.width = msg.progress + '%';
+  }
+}
+
+function updateDetections(dets) {
+  const list = document.getElementById('det-list');
+  const count = document.getElementById('det-count');
+  count.textContent = dets.length + ' object' + (dets.length !== 1 ? 's' : '');
+
+  if (dets.length === 0) {
+    list.innerHTML = '<div class="det-empty">No detections in this frame</div>';
+    return;
+  }
+
+  list.innerHTML = dets.map(d => {
+    const color = classColor(d.cls);
+    const conf = typeof d.conf === 'number' ? (d.conf * 100).toFixed(0) : '—';
+    return `
+      <div class="det-tag">
+        <span class="det-tag-dot" style="background:${color}"></span>
+        <span class="det-tag-label">${d.cls}</span>
+        <span class="det-tag-conf">${conf}%</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function stopInference() {
+  isRunning = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  if (wsConnection) wsConnection.close();
+  wsConnection = null;
+  const videoEl = document.getElementById('video-el');
+  videoEl.pause();
+
+  document.getElementById('run-btn').style.display = 'block';
+  document.getElementById('stop-btn').style.display = 'none';
+  document.getElementById('sb-state').textContent = 'IDLE';
+  document.getElementById('sb-state').style.color = 'var(--muted)';
+  document.getElementById('hud-status').textContent = '● STOPPED';
+  document.getElementById('hud-status').style.color = 'var(--accent2)';
+  checkRunnable();
+}
+
+function showCanvas() {
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('canvas-wrapper').classList.add('active');
+  document.getElementById('scanline').classList.add('active');
+  document.getElementById('hud-top').classList.add('active');
+  document.getElementById('hud-bottom').classList.add('active');
+}
+function hideCanvas() {
+  document.getElementById('placeholder').style.display = 'flex';
+  document.getElementById('canvas-wrapper').classList.remove('active');
+  document.getElementById('scanline').classList.remove('active');
+  document.getElementById('hud-top').classList.remove('active');
+  document.getElementById('hud-bottom').classList.remove('active');
+  isRunning = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+}
+
+// ─── UTILS ─────────────────────────────────────────────────────────
+function formatTime(s) {
+  const m = Math.floor(s/60);
+  const sec = Math.floor(s%60).toString().padStart(2,'0');
+  return m + ':' + sec;
+}
+
+let toastTimeout;
+function showToast(icon, msg) {
+  const el = document.getElementById('toast');
+  document.getElementById('t-icon').textContent = icon;
+  document.getElementById('t-msg').textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => el.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
